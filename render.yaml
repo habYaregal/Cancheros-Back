@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: cancheros-api
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    releaseCommand: npm run db:migrate
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: LIVE_SYNC_ENABLED
+        value: "true"
+      - key: LIVE_SYNC_INTERVAL_MS
+        value: "60000"
