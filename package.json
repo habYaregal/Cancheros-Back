@@ -1,0 +1,47 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon src/app.js",
+    "start": "node src/app.js",
+    "test:db": "node src/test-db.js",
+    "test:fpl": "node src/test-fpl.js",
+    "test:fpl-manager": "node src/test-fpl-manager.js",
+    "db:migrate": "node src/database/migrate.js",
+    "test:fpl-league": "node src/test-fpl-league.js",
+    "test:manager-sync": "node src/test-manager-sync.js",
+    "seed:cancheros": "node src/seed-cancheros.js",
+    "test:fpl-history": "node src/test-fpl-history.js",
+    "test:gameweek-sync": "node src/test-gameweek-sync.js",
+    "test:cancheros-sync": "node src/test-cancheros-sync.js",
+    "test:weekly": "node src/test-weekly-leaderboard.js",
+    "test:h2h": "node src/scripts/testH2H.js",
+    "test:h2h-rules": "node src/scripts/testH2HRules.js",
+    "test:history": "node src/scripts/testCompetitionHistory.js",
+    "sync:gameweek": "node src/scripts/runGameweekPipeline.js",
+    "sync:live": "node src/scripts/runLiveSync.js",
+    "sync:members": "node src/scripts/syncCancherosMembers.js",
+    "sync:gw1-h2h": "node src/scripts/setGw1ManualLottery.js",
+    "map:months": "node src/scripts/mapCompetitionMonths.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@supabase/server": "^1.4.1",
+    "axios": "^1.19.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pg": "^8.23.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "eslint": "^10.8.1",
+    "nodemon": "^3.1.14",
+    "prettier": "^3.9.6"
+  }
+}
