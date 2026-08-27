@@ -1,13 +1,17 @@
 import { pool } from "../../config/database.js";
 import { generateH2HLottery } from "./h2h.lottery.js";
 
+const DRAW_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Draw is allowed only after a gameweek has finished,
- * and only for the next gameweek if it has no lottery yet.
+ * only for the next gameweek if it has no lottery yet,
+ * and only within 24 hours of that gameweek's deadline.
  */
 export async function getH2HDrawStatus(
   cancherosId,
-  db = pool
+  db = pool,
+  now = new Date()
 ) {
   const finished = await db.query(`
     SELECT id, fpl_id, name, finished
@@ -20,11 +24,13 @@ export async function getH2HDrawStatus(
   if (finished.rows.length === 0) {
     return {
       canDraw: false,
+      pendingDraw: false,
       reason:
         "Available after a gameweek finishes.",
       previousGameweek: null,
       targetGameweek: null,
       alreadyDrawn: false,
+      drawOpensAt: null,
     };
   }
 
@@ -33,7 +39,7 @@ export async function getH2HDrawStatus(
 
   const next = await db.query(
     `
-    SELECT id, fpl_id, name, finished, is_current
+    SELECT id, fpl_id, name, finished, is_current, deadline_time
     FROM gameweeks
     WHERE fpl_id = $1
     LIMIT 1;
@@ -44,10 +50,12 @@ export async function getH2HDrawStatus(
   if (next.rows.length === 0) {
     return {
       canDraw: false,
+      pendingDraw: false,
       reason: `No gameweek ${nextFplId} found yet.`,
       previousGameweek: mapGw(previous),
       targetGameweek: null,
       alreadyDrawn: false,
+      drawOpensAt: null,
     };
   }
 
@@ -67,20 +75,50 @@ export async function getH2HDrawStatus(
   if (existing.rows.length > 0) {
     return {
       canDraw: false,
+      pendingDraw: false,
       reason: `GW${target.fpl_id} lottery already drawn.`,
       previousGameweek: mapGw(previous),
       targetGameweek: mapGw(target),
       alreadyDrawn: true,
       roundId: existing.rows[0].id,
+      drawOpensAt: null,
+    };
+  }
+
+  const window = getDrawWindowStatus(target.deadline_time, now);
+
+  if (!window.deadlineTime) {
+    return {
+      canDraw: false,
+      pendingDraw: true,
+      reason: `GW${target.fpl_id} deadline not set yet — draw unlocks 24 hours before deadline.`,
+      previousGameweek: mapGw(previous),
+      targetGameweek: mapGw(target),
+      alreadyDrawn: false,
+      drawOpensAt: null,
+    };
+  }
+
+  if (!window.isOpen) {
+    return {
+      canDraw: false,
+      pendingDraw: true,
+      reason: `Draw opens 24 hours before the GW${target.fpl_id} deadline (${formatDeadline(window.deadlineTime)}).`,
+      previousGameweek: mapGw(previous),
+      targetGameweek: mapGw(target),
+      alreadyDrawn: false,
+      drawOpensAt: window.drawOpensAt.toISOString(),
     };
   }
 
   return {
     canDraw: true,
+    pendingDraw: true,
     reason: `GW${previous.fpl_id} finished — draw GW${target.fpl_id}.`,
     previousGameweek: mapGw(previous),
     targetGameweek: mapGw(target),
     alreadyDrawn: false,
+    drawOpensAt: window.drawOpensAt.toISOString(),
   };
 }
 
@@ -158,5 +196,38 @@ function mapGw(row) {
     name: row.name,
     finished: row.finished,
     isCurrent: row.is_current ?? false,
+    deadlineTime: row.deadline_time
+      ? new Date(row.deadline_time).toISOString()
+      : null,
   };
+}
+
+export function getDrawWindowStatus(deadlineTime, now = new Date()) {
+  if (!deadlineTime) {
+    return {
+      deadlineTime: null,
+      drawOpensAt: null,
+      isOpen: false,
+    };
+  }
+
+  const deadline = new Date(deadlineTime);
+  const drawOpensAt = new Date(deadline.getTime() - DRAW_WINDOW_MS);
+
+  return {
+    deadlineTime: deadline,
+    drawOpensAt,
+    isOpen: now >= drawOpensAt,
+  };
+}
+
+function formatDeadline(date) {
+  return date.toLocaleString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
 }
