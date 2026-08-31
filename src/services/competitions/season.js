@@ -1,4 +1,5 @@
 import { pool } from "../../config/database.js";
+import { gameweekPointsSql } from "./points.js";
 
 export async function getSeasonLeaderboard(
   seasonId,
@@ -15,7 +16,7 @@ export async function getSeasonLeaderboard(
       fm.team_name,
       cm.display_name,
 
-      COALESCE(SUM(mgs.points), 0)::integer AS points,
+      COALESCE(SUM(${gameweekPointsSql}), 0)::integer AS points,
 
       COUNT(mgs.id)::integer AS gameweeks_played
 

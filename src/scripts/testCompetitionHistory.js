@@ -159,7 +159,8 @@ async function run() {
     await client.query(
       `
       UPDATE manager_gameweek_scores
-      SET points = 81
+      SET points = 81,
+          total_points = 81
       WHERE manager_id = $1
         AND gameweek_id = $2;
       `,
