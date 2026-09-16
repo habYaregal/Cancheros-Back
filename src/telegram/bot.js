@@ -1,0 +1,174 @@
+import { Bot, InlineKeyboard } from "grammy";
+import {
+  getTelegramProfile,
+  linkTelegramToFpl,
+} from "../services/telegram/accounts.js";
+
+let bot = null;
+
+export function startTelegramBot() {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const webAppUrl = process.env.TELEGRAM_WEBAPP_URL;
+
+  if (!token) {
+    console.log("Telegram bot skipped (TELEGRAM_BOT_TOKEN not set)");
+    return null;
+  }
+
+  if (!webAppUrl) {
+    console.warn(
+      "Telegram bot skipped (TELEGRAM_WEBAPP_URL is required, e.g. https://your-app.vercel.app)"
+    );
+    return null;
+  }
+
+  bot = new Bot(token);
+
+  const keyboard = new InlineKeyboard().webApp("Open Cancheros", webAppUrl);
+
+  bot.command("start", async (ctx) => {
+    await ctx.reply(
+      [
+        "Welcome to Cancheros.",
+        "",
+        "Open the Mini App, then register with your FPL team ID (the number in your FPL URL).",
+        "After that, tables highlight you and your profile shows ranks and this week's H2H.",
+        "",
+        "Commands:",
+        "/register <FPL_ID> — link your FPL team",
+        "/status — check your registration",
+        "/app — open the Mini App",
+      ].join("\n"),
+      { reply_markup: keyboard }
+    );
+  });
+
+  bot.command("app", async (ctx) => {
+    await ctx.reply("Tap below to open the league.", {
+      reply_markup: keyboard,
+    });
+  });
+
+  bot.command("register", async (ctx) => {
+    const text = ctx.match?.trim();
+    const fplId = parseFplId(text);
+
+    if (!fplId) {
+      await ctx.reply(
+        [
+          "Send your FPL team ID or URL.",
+          "",
+          "Example: /register 1234567",
+          "Or: /register https://fantasy.premierleague.com/entry/1234567/event/1",
+        ].join("\n")
+      );
+      return;
+    }
+
+    const telegramUser = {
+      id: ctx.from.id,
+      username: ctx.from.username || null,
+      first_name: ctx.from.first_name || null,
+      last_name: ctx.from.last_name || null,
+      language_code: ctx.from.language_code || null,
+    };
+
+    try {
+      const profile = await linkTelegramToFpl(telegramUser, fplId);
+      const member = profile.member;
+      await ctx.reply(
+        [
+          `✅ Linked to ${member.firstName} ${member.lastName} (${member.teamName}).`,
+          "",
+          "Open the Mini App to see your highlighted rows and personal dashboard.",
+        ].join("\n"),
+        { reply_markup: keyboard }
+      );
+    } catch (error) {
+      const message =
+        error.message ||
+        "Could not register. Make sure your FPL team is in the Cancheros league.";
+      await ctx.reply(`❌ ${message}`);
+    }
+  });
+
+  bot.command("status", async (ctx) => {
+    const telegramUser = {
+      id: ctx.from.id,
+      username: ctx.from.username || null,
+      first_name: ctx.from.first_name || null,
+      last_name: ctx.from.last_name || null,
+      language_code: ctx.from.language_code || null,
+    };
+
+    try {
+      const profile = await getTelegramProfile(telegramUser);
+
+      if (!profile.linked) {
+        await ctx.reply(
+          [
+            "You are not registered yet.",
+            "",
+            "Send /register <FPL_ID> to link your FPL team.",
+          ].join("\n"),
+          { reply_markup: keyboard }
+        );
+        return;
+      }
+
+      const { member, snapshot } = profile;
+      const lines = [
+        `✅ Registered as ${member.firstName} ${member.lastName}`,
+        `Team: ${member.teamName}`,
+        `FPL ID: ${member.fplId}`,
+      ];
+
+      if (snapshot?.season) {
+        lines.push(`Season rank: #${snapshot.season.position}`);
+      }
+      if (snapshot?.weekly) {
+        lines.push(`GW${snapshot.weekly.gameweek} rank: #${snapshot.weekly.position}`);
+      }
+      if (snapshot?.h2h) {
+        lines.push(`H2H rank: #${snapshot.h2h.position}`);
+      }
+
+      await ctx.reply(lines.join("\n"), { reply_markup: keyboard });
+    } catch (error) {
+      await ctx.reply(`❌ ${error.message || "Could not check your status."}`);
+    }
+  });
+
+  bot.catch((err) => {
+    console.error("Telegram bot error", err);
+  });
+
+  void bot.api
+    .setChatMenuButton({
+      menu_button: {
+        type: "web_app",
+        text: "Cancheros",
+        web_app: { url: webAppUrl },
+      },
+    })
+    .catch((err) => {
+      console.warn("Could not set Telegram menu button", err.message);
+    });
+
+  bot.start({
+    onStart: ({ username }) => {
+      console.log(`Telegram bot @${username} polling`);
+    },
+  });
+
+  return bot;
+}
+
+function parseFplId(input) {
+  if (!input) return null;
+  const trimmed = String(input).trim();
+  const fromUrl = trimmed.match(/entry\/(\d+)/i);
+  if (fromUrl) return Number(fromUrl[1]);
+  const n = Number(trimmed);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}

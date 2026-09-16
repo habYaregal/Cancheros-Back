@@ -32,6 +32,9 @@ router.get(
         draws: row.draws,
         losses: row.losses,
         points: row.points,
+        pointsGained: row.points_gained,
+        pointsLost: row.points_lost,
+        pointsDifference: row.points_difference,
       })),
       winner: {
         tied: Boolean(winner.tied),
@@ -227,6 +230,9 @@ function mapStandingPlayer(row) {
     draws: row.draws,
     losses: row.losses,
     points: row.points,
+    pointsGained: row.points_gained,
+    pointsLost: row.points_lost,
+    pointsDifference: row.points_difference,
   };
 }
 

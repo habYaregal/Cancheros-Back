@@ -16,11 +16,14 @@ import monthlyRoutes from "./routes/monthly.routes.js";
 import seasonRoutes from "./routes/season.routes.js";
 import h2hRoutes from "./routes/h2h.routes.js";
 import syncRoutes from "./routes/sync.routes.js";
+import authRoutes from "./routes/auth.routes.js";
 
 import {
   startLiveSyncScheduler,
   getLiveSyncStatus,
 } from "./services/sync/live.scheduler.js";
+import { startTelegramBot } from "./telegram/bot.js";
+import { runMigrations } from "./database/runMigrations.js";
 
 dotenv.config();
 
@@ -55,16 +58,25 @@ app.use("/api/monthly", monthlyRoutes);
 app.use("/api/season", seasonRoutes);
 app.use("/api/h2h", h2hRoutes);
 app.use("/api/sync", syncRoutes);
+app.use("/api/auth", authRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
 
 if (process.env.NODE_ENV !== "test") {
-  app.listen(port, () => {
+  app.listen(port, async () => {
     console.log(
       `Cancheros API listening on http://localhost:${port}`
     );
+
+    try {
+      await runMigrations();
+    } catch (error) {
+      console.error("Startup migration failed:", error.message);
+    }
+
     startLiveSyncScheduler();
+    startTelegramBot();
   });
 }
 
