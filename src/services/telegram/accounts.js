@@ -5,6 +5,7 @@ import { addCancherosMember } from "../cancheros/cancheros.members.js";
 import { getSeasonLeaderboard } from "../competitions/season.js";
 import { getWeeklyLeaderboard } from "../competitions/weekly.js";
 import { getH2HStandings } from "../competitions/h2h.js";
+import { findClaimFplIdByUsername } from "./claims.js";
 
 export async function upsertTelegramAccount(telegramUser, db = pool) {
   const result = await db.query(
@@ -43,8 +44,50 @@ export async function upsertTelegramAccount(telegramUser, db = pool) {
 }
 
 export async function getTelegramProfile(telegramUser, db = pool) {
-  const account = await upsertTelegramAccount(telegramUser, db);
+  let account = await upsertTelegramAccount(telegramUser, db);
+
+  if (!account.member_id) {
+    const claimedFplId = findClaimFplIdByUsername(telegramUser.username);
+    if (claimedFplId) {
+      try {
+        account = await autoLinkByClaim(telegramUser, account, claimedFplId, db);
+      } catch {
+      }
+    }
+  }
+
   return buildProfile(account, db);
+}
+
+async function autoLinkByClaim(telegramUser, account, fplId, db = pool) {
+  const member = await findOrClaimMember(fplId, db);
+
+  const taken = await db.query(
+    `
+    SELECT telegram_user_id
+    FROM telegram_accounts
+    WHERE member_id = $1
+      AND telegram_user_id <> $2;
+    `,
+    [member.id, telegramUser.id]
+  );
+
+  if (taken.rows.length > 0) {
+    return account;
+  }
+
+  const linked = await db.query(
+    `
+    UPDATE telegram_accounts
+    SET member_id = $1, last_seen_at = NOW()
+    WHERE telegram_user_id = $2
+      AND member_id IS NULL
+    RETURNING *;
+    `,
+    [member.id, telegramUser.id]
+  );
+
+  return linked.rows[0] || account;
 }
 
 export async function getRegisteredMembers(db = pool) {
@@ -281,6 +324,9 @@ async function getMemberSnapshot(memberId, db) {
     "wins",
     "draws",
     "losses",
+    "points_gained",
+    "points_lost",
+    "points_difference",
   ]);
 
   let nextMatch = null;

@@ -27,12 +27,43 @@ export function startTelegramBot() {
   const keyboard = new InlineKeyboard().webApp("Open Cancheros", webAppUrl);
 
   bot.command("start", async (ctx) => {
+    const telegramUser = {
+      id: ctx.from.id,
+      username: ctx.from.username || null,
+      first_name: ctx.from.first_name || null,
+      last_name: ctx.from.last_name || null,
+      language_code: ctx.from.language_code || null,
+    };
+
+    const profile = await getTelegramProfile(telegramUser);
+
+    if (profile.linked) {
+      const member = profile.member;
+      await ctx.reply(
+        [
+          `Welcome back, ${member.firstName}.`,
+          "",
+          `You're linked to ${member.teamName} (FPL #${member.fplId}).`,
+          "",
+          "Open the Mini App to see standings, your personal dashboard, and this week's H2H match.",
+          "",
+          "Commands:",
+          "/status — view your ranks",
+          "/app — open the Mini App",
+        ].join("\n"),
+        { reply_markup: keyboard }
+      );
+      return;
+    }
+
     await ctx.reply(
       [
         "Welcome to Cancheros.",
         "",
-        "Open the Mini App, then register with your FPL team ID (the number in your FPL URL).",
-        "After that, tables highlight you and your profile shows ranks and this week's H2H.",
+        "Tap below to open the Mini App, then register with your FPL team ID.",
+        "Or send /register with your FPL ID or team URL.",
+        "",
+        "After registration, tables highlight your row and your profile shows ranks and this week's H2H.",
         "",
         "Commands:",
         "/register <FPL_ID> — link your FPL team",
@@ -53,7 +84,29 @@ export function startTelegramBot() {
     const text = ctx.match?.trim();
     const fplId = parseFplId(text);
 
+    const telegramUser = {
+      id: ctx.from.id,
+      username: ctx.from.username || null,
+      first_name: ctx.from.first_name || null,
+      last_name: ctx.from.last_name || null,
+      language_code: ctx.from.language_code || null,
+    };
+
     if (!fplId) {
+      const profile = await getTelegramProfile(telegramUser);
+      if (profile.linked) {
+        const member = profile.member;
+        await ctx.reply(
+          [
+            `✅ Linked to ${member.firstName} ${member.lastName} (${member.teamName}).`,
+            "",
+            "Open the Mini App to see your highlighted rows and personal dashboard.",
+          ].join("\n"),
+          { reply_markup: keyboard }
+        );
+        return;
+      }
+
       await ctx.reply(
         [
           "Send your FPL team ID or URL.",
@@ -64,14 +117,6 @@ export function startTelegramBot() {
       );
       return;
     }
-
-    const telegramUser = {
-      id: ctx.from.id,
-      username: ctx.from.username || null,
-      first_name: ctx.from.first_name || null,
-      last_name: ctx.from.last_name || null,
-      language_code: ctx.from.language_code || null,
-    };
 
     try {
       const profile = await linkTelegramToFpl(telegramUser, fplId);
@@ -109,7 +154,8 @@ export function startTelegramBot() {
           [
             "You are not registered yet.",
             "",
-            "Send /register <FPL_ID> to link your FPL team.",
+            "Send /register (we'll try to match your Telegram username first).",
+            "Or send /register <FPL_ID> with your team ID or team URL.",
           ].join("\n"),
           { reply_markup: keyboard }
         );
@@ -124,13 +170,23 @@ export function startTelegramBot() {
       ];
 
       if (snapshot?.season) {
-        lines.push(`Season rank: #${snapshot.season.position}`);
+        lines.push(`Season: #${snapshot.season.position} — ${snapshot.season.points} pts`);
       }
       if (snapshot?.weekly) {
-        lines.push(`GW${snapshot.weekly.gameweek} rank: #${snapshot.weekly.position}`);
+        lines.push(`GW${snapshot.weekly.gameweek}: #${snapshot.weekly.position} — ${snapshot.weekly.points} pts`);
       }
       if (snapshot?.h2h) {
-        lines.push(`H2H rank: #${snapshot.h2h.position}`);
+        const pd = snapshot.h2h.points_difference ?? 0;
+        const pdSign = pd >= 0 ? "+" : "";
+        lines.push(`H2H: #${snapshot.h2h.position} — ${snapshot.h2h.points} pts · PD ${pdSign}${pd} · ${snapshot.h2h.wins}W ${snapshot.h2h.draws}D ${snapshot.h2h.losses}L`);
+      }
+      if (snapshot?.nextMatch) {
+        if (snapshot.nextMatch.isBye) {
+          lines.push(`This week: BYE`);
+        } else {
+          const o = snapshot.nextMatch.opponent;
+          lines.push(`This week: vs ${o?.firstName || ""} ${o?.lastName || ""}`.trim());
+        }
       }
 
       await ctx.reply(lines.join("\n"), { reply_markup: keyboard });
