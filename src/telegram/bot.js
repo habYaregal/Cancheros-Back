@@ -6,6 +6,10 @@ import {
 
 let bot = null;
 
+export function getBot() {
+  return bot;
+}
+
 export function startTelegramBot() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const webAppUrl = process.env.TELEGRAM_WEBAPP_URL;

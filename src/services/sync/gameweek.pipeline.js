@@ -5,12 +5,15 @@ import { syncCancherosScoresFromLeague } from "../fpl/fpl.score.live.js";
 import { syncCancherosMembersFromFpl } from "../cancheros/cancheros.members.js";
 import { generateH2HLottery } from "../competitions/h2h.lottery.js";
 import { processH2HResults } from "../competitions/h2h.results.js";
+import { notifyGameweekEnd } from "../../telegram/notifications.js";
 import {
   recordWeeklyResult,
   recordMonthlyResult,
   recordSeasonResult,
   recordH2HResult,
 } from "../competitions/history.js";
+
+const notifiedGameweeks = new Set();
 
 /**
  * Full Cancheros gameweek pipeline.
@@ -167,6 +170,26 @@ export async function runGameweekPipeline(
         target.season_id,
         db
       );
+    }
+
+    const shouldNotifyGw =
+      summary.weekly?.recorded &&
+      roundId &&
+      !notifiedGameweeks.has(target.fpl_id);
+
+    if (shouldNotifyGw) {
+      notifiedGameweeks.add(target.fpl_id);
+      void notifyGameweekEnd({
+        gameweekFplId: target.fpl_id,
+        roundId,
+        cancherosId: cancheros.id,
+        db,
+      }).catch((err) => {
+        console.warn(
+          `[gameweek-pipeline] notifyGameweekEnd (GW${target.fpl_id}) failed:`,
+          err.message || String(err)
+        );
+      });
     }
   }
 

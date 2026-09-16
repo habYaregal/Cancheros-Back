@@ -1,5 +1,6 @@
 import { pool } from "../../config/database.js";
 import { generateH2HLottery } from "./h2h.lottery.js";
+import { notifyH2HDraw } from "../../telegram/notifications.js";
 
 const DRAW_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -164,7 +165,7 @@ export async function drawNextH2HLottery(
     [lottery.roundId]
   );
 
-  return {
+  const result = {
     created: lottery.created,
     roundId: lottery.roundId,
     previousGameweek: status.previousGameweek,
@@ -185,6 +186,18 @@ export async function drawNextH2HLottery(
       ? `H2H lottery created for GW${status.targetGameweek.fplId}.`
       : `H2H lottery already exists for GW${status.targetGameweek.fplId}.`,
   };
+
+  if (lottery.created) {
+    void notifyH2HDraw({
+      roundId: result.roundId,
+      gameweek: result.gameweek,
+      cancherosId,
+    }).catch((err) => {
+      console.warn("[h2h-draw] notifyH2HDraw failed:", err.message || String(err));
+    });
+  }
+
+  return result;
 }
 
 function mapGw(row) {
