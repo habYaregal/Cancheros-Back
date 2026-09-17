@@ -2,13 +2,18 @@ import {
   runQuickSync,
   runLiveSync,
 } from "./gameweek.pipeline.js";
+import { pool } from "../../config/database.js";
+import { notifyDeadlineReminder } from "../../telegram/notifications.js";
 
 const DEFAULT_INTERVAL_MS = 60 * 1000;
 const FULL_SYNC_EVERY = 15;
+const DEADLINE_REMINDER_WINDOW_MS = 4 * 60 * 60 * 1000;
+const DEADLINE_REMINDER_GRACE_MS = 5 * 60 * 1000;
 
 let timer = null;
 let running = false;
 let startedAt = null;
+const deadlineRemindersSent = new Set();
 
 export const liveSyncStatus = {
   enabled: false,
@@ -113,6 +118,13 @@ async function tick() {
         ` scores=${liveSyncStatus.lastSummary.scoresSynced}` +
         ` h2hChanged=${liveSyncStatus.lastSummary.h2hChanged}`
     );
+
+    void checkDeadlineReminder().catch((err) => {
+      console.warn(
+        "[live-sync] deadline reminder check failed:",
+        err.message || String(err)
+      );
+    });
   } catch (error) {
     liveSyncStatus.lastError = error.message || String(error);
     console.error("[live-sync] failed:", liveSyncStatus.lastError);
@@ -128,4 +140,53 @@ export function getLiveSyncStatus() {
     startedAt,
     running,
   };
+}
+
+async function checkDeadlineReminder(db = pool) {
+  try {
+    const gw = await db.query(`
+      SELECT id, fpl_id, name, finished, deadline_time
+      FROM gameweeks
+      WHERE is_current = true
+      LIMIT 1;
+    `);
+
+    const row = gw.rows[0];
+    if (!row) return null;
+
+    const gwFplId = Number(row.fpl_id);
+    if (row.finished) return null;
+    if (!row.deadline_time) return null;
+    if (deadlineRemindersSent.has(gwFplId)) return null;
+
+    const deadline = new Date(row.deadline_time);
+    const now = new Date();
+    const msLeft = deadline.getTime() - now.getTime();
+
+    if (msLeft <= 0) return null;
+    if (msLeft > DEADLINE_REMINDER_WINDOW_MS + DEADLINE_REMINDER_GRACE_MS) {
+      return null;
+    }
+
+    const hoursLeft = Math.ceil(msLeft / (60 * 60 * 1000));
+    deadlineRemindersSent.add(gwFplId);
+
+    const result = await notifyDeadlineReminder({
+      gameweekFplId: gwFplId,
+      gameweekName: row.name || null,
+      deadlineTime: deadline,
+      hoursLeft,
+    });
+
+    console.log(
+      `[live-sync:deadline-reminder] GW${gwFplId} msLeft=${msLeft} hrsLeft=${hoursLeft} sent=${result.sent} failed=${result.failed}`
+    );
+    return result;
+  } catch (err) {
+    console.error(
+      "[live-sync:deadline-reminder] error:",
+      err.message || String(err)
+    );
+    return null;
+  }
 }

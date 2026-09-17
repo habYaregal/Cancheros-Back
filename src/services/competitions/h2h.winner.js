@@ -4,11 +4,13 @@ import { getH2HStandings } from "./h2h.js";
 /**
  * Resolve the Cancheros H2H winner(s).
  *
- * Tie order:
+ * Tie order — MATCHES standings sort in h2h.js:
  *   1. Highest H2H points
- *   2. Most wins
- *   3. Head-to-head among remaining tied players
- *   4. Still tied → joint winners
+ *   2. Highest points difference (PG - PL)
+ *   3. Most wins
+ *   4. Head-to-head among remaining tied players
+ *   5. Name (alphabetical last/first)
+ *   6. Still tied → joint winners
  */
 export async function getH2HWinner(
   cancherosId,
@@ -68,7 +70,29 @@ export async function getH2HWinner(
 
   /*
    * --------------------------------------------------
-   * 2. Most wins
+   * 2. Highest points difference (PG - PL)
+   * --------------------------------------------------
+   */
+
+  const topPd = Math.max(
+    ...candidates.map((player) => player.points_difference)
+  );
+
+  candidates = candidates.filter(
+    (player) => player.points_difference === topPd
+  );
+
+  if (candidates.length === 1) {
+    return buildWinnerResult(
+      cancherosId,
+      candidates,
+      "points_difference"
+    );
+  }
+
+  /*
+   * --------------------------------------------------
+   * 3. Most wins
    * --------------------------------------------------
    */
 
@@ -90,7 +114,7 @@ export async function getH2HWinner(
 
   /*
    * --------------------------------------------------
-   * 3. Head-to-head among remaining candidates
+   * 4. Head-to-head among remaining candidates
    * --------------------------------------------------
    */
 
@@ -126,7 +150,42 @@ export async function getH2HWinner(
 
   /*
    * --------------------------------------------------
-   * 4. Still tied → joint winners
+   * 5. Name (alphabetical, last_name then first_name)
+   * --------------------------------------------------
+   */
+
+  candidates.sort((a, b) => {
+    const last = String(a.last_name).localeCompare(String(b.last_name));
+    if (last !== 0) return last;
+    return String(a.first_name).localeCompare(String(b.first_name));
+  });
+
+  if (candidates.length === 1) {
+    return buildWinnerResult(
+      cancherosId,
+      candidates,
+      "name"
+    );
+  }
+
+  const firstByAlpha = [candidates[0]];
+  const hasUniqueAlpha = candidates.some(
+    (p, i) =>
+      i > 0 &&
+      (String(p.last_name) !== String(candidates[0].last_name) ||
+        String(p.first_name) !== String(candidates[0].first_name))
+  );
+  if (hasUniqueAlpha) {
+    return buildWinnerResult(
+      cancherosId,
+      firstByAlpha,
+      "name"
+    );
+  }
+
+  /*
+   * --------------------------------------------------
+   * 6. Still tied → joint winners
    * --------------------------------------------------
    */
 

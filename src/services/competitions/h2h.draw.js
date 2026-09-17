@@ -1,4 +1,5 @@
 import { pool } from "../../config/database.js";
+import { formatEthiopianDateTime } from "../../config/time.js";
 import { generateH2HLottery } from "./h2h.lottery.js";
 import { notifyH2HDraw } from "../../telegram/notifications.js";
 
@@ -235,12 +236,5 @@ export function getDrawWindowStatus(deadlineTime, now = new Date()) {
 }
 
 function formatDeadline(date) {
-  return date.toLocaleString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
+  return formatEthiopianDateTime(date);
 }

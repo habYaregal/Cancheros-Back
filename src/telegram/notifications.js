@@ -1,4 +1,5 @@
 import { pool } from "../config/database.js";
+import { formatEthiopianDateTime } from "../config/time.js";
 import { getBot } from "./bot.js";
 import { getRegisteredMembers } from "../services/telegram/accounts.js";
 import { getH2HStandings } from "../services/competitions/h2h.js";
@@ -263,6 +264,82 @@ export async function notifyGameweekEnd({
     return { sent, failed, gameweekFplId, roundId: roundId ?? null };
   } catch (err) {
     console.error("[tg:notify-gw-end] failed:", err.message || String(err));
+    return { sent: 0, failed: 0, error: err.message || String(err) };
+  }
+}
+
+export async function notifyDeadlineReminder({
+  gameweekFplId,
+  gameweekName,
+  deadlineTime,
+  hoursLeft,
+}) {
+  const bot = getBot();
+  if (!bot) {
+    return { sent: 0, failed: 0, skipped: true, reason: "Bot not started" };
+  }
+
+  try {
+    if (!gameweekFplId) {
+      return { sent: 0, failed: 0, reason: "Missing gameweekFplId" };
+    }
+
+    const members = await getRegisteredMembers();
+    if (members.length === 0) {
+      return { sent: 0, failed: 0, reason: "No registered members" };
+    }
+
+    const deadlineLabel =
+      deadlineTime instanceof Date
+        ? formatEthiopianDateTime(deadlineTime)
+        : "";
+
+    const hours =
+      typeof hoursLeft === "number" ? Math.max(0, hoursLeft) : null;
+    const hoursText =
+      hours != null
+        ? hours === 1
+          ? "1 hour"
+          : `${hours} hours`
+        : "a few hours";
+
+    let sent = 0;
+    let failed = 0;
+
+    for (const member of members) {
+      try {
+        const lines = [
+          `⏰ GW${gameweekFplId} — ${hoursText} left to deadline`,
+        ];
+        if (gameweekName) lines[0] += ` (${gameweekName})`;
+        lines.push("");
+        lines.push("Time for a final check:");
+        lines.push("  • Captaincy locked in?");
+        lines.push("  • Transfers confirmed?");
+        lines.push("  • Any injuries or suspensions?");
+        if (deadlineLabel) {
+          lines.push("");
+          lines.push(`Deadline: ${deadlineLabel}`);
+        }
+
+        const body = lines.join("\n");
+        const res = await sendDm(member.telegramUserId, body);
+        if (res.ok) sent++;
+        else if (!res.skipped) failed++;
+      } catch (err) {
+        failed++;
+      }
+    }
+
+    console.log(
+      `[tg:notify-deadline] GW${gameweekFplId} sent=${sent} failed=${failed}`
+    );
+    return { sent, failed, gameweekFplId, hoursLeft: hours };
+  } catch (err) {
+    console.error(
+      "[tg:notify-deadline] failed:",
+      err.message || String(err)
+    );
     return { sent: 0, failed: 0, error: err.message || String(err) };
   }
 }
