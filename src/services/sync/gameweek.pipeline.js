@@ -181,6 +181,7 @@ export async function runGameweekPipeline(
       notifiedGameweeks.add(target.fpl_id);
       void notifyGameweekEnd({
         gameweekFplId: target.fpl_id,
+        gameweekId: target.id,
         roundId,
         cancherosId: cancheros.id,
         db,

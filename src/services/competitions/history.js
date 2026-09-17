@@ -247,6 +247,8 @@ export async function recordWeeklyResult(
 
   return {
     recorded: true,
+    created: saved.created,
+    updated: saved.updated,
     competitionType: "weekly",
     gameweek: gameweekFplId,
     ...saved,
